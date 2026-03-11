@@ -1,0 +1,946 @@
+basePath: /api/v1
+definitions:
+  api.CreateTenantRequest:
+    properties:
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  api.ListResponse:
+    properties:
+      list: {}
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  api.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  api.LoginResponse:
+    properties:
+      expires_in:
+        type: integer
+      token:
+        type: string
+    type: object
+  api.Response:
+    properties:
+      code:
+        type: integer
+      data: {}
+      msg:
+        type: string
+    type: object
+  api.TenantResponse:
+    properties:
+      api_key:
+        type: string
+      created_at:
+        type: string
+      expired_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      status:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  api.UpdateTenantRequest:
+    properties:
+      name:
+        type: string
+      status:
+        type: integer
+    type: object
+  model.Software:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      platform:
+        type: string
+      slug:
+        type: string
+      status:
+        type: integer
+      tenant_id:
+        description: 多租户预留字段
+        type: integer
+      updated_at:
+        type: string
+      versions:
+        description: 关联
+        items:
+          $ref: '#/definitions/model.Version'
+        type: array
+    type: object
+  model.Tenant:
+    properties:
+      api_key:
+        type: string
+      created_at:
+        type: string
+      expired_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      status:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  model.Version:
+    properties:
+      changelog:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      is_forced:
+        type: boolean
+      is_incremental:
+        type: boolean
+      min_version:
+        type: string
+      package_hash:
+        type: string
+      package_size:
+        type: integer
+      package_url:
+        type: string
+      published_at:
+        type: string
+      software:
+        allOf:
+        - $ref: '#/definitions/model.Software'
+        description: 关联
+      software_id:
+        type: integer
+      status:
+        type: integer
+      tenant_id:
+        description: 多租户预留字段
+        type: integer
+      updated_at:
+        type: string
+      version:
+        type: string
+      version_code:
+        type: integer
+    type: object
+  service.CheckUpdateResponse:
+    properties:
+      changelog:
+        type: string
+      download_url:
+        type: string
+      has_update:
+        type: boolean
+      is_forced:
+        type: boolean
+      is_incremental:
+        type: boolean
+      min_version:
+        type: string
+      package_hash:
+        type: string
+      package_size:
+        type: integer
+      published_at:
+        type: string
+      version:
+        type: string
+      version_code:
+        type: integer
+    type: object
+  service.CreateSoftwareRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      platform:
+        description: windows/macos/linux
+        type: string
+      slug:
+        type: string
+      tenant_id:
+        description: 多租户预留
+        type: integer
+    required:
+    - name
+    - platform
+    - slug
+    type: object
+  service.CreateVersionRequest:
+    properties:
+      changelog:
+        type: string
+      is_forced:
+        type: boolean
+      is_incremental:
+        type: boolean
+      min_version:
+        type: string
+      software_id:
+        type: integer
+      tenant_id:
+        type: integer
+      version:
+        type: string
+    required:
+    - software_id
+    - version
+    type: object
+  service.StatsResponse:
+    properties:
+      date:
+        type: string
+      download_count:
+        type: integer
+      unique_devices:
+        type: integer
+    type: object
+  service.UpdateSoftwareRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      platform:
+        type: string
+      status:
+        type: integer
+    type: object
+  service.UpdateVersionRequest:
+    properties:
+      changelog:
+        type: string
+      is_forced:
+        type: boolean
+      is_incremental:
+        type: boolean
+      min_version:
+        type: string
+      status:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+  description: 支持多租户、多存储后端的软件升级管理服务
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: 软件升级管理系统 API
+  version: "1.0"
+paths:
+  /admin/login:
+    post:
+      consumes:
+      - application/json
+      description: 使用用户名密码登录获取JWT令牌
+      parameters:
+      - description: 登录信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.LoginResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response'
+      summary: 管理员登录
+      tags:
+      - 认证
+  /admin/software:
+    get:
+      description: 分页获取软件列表
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.ListResponse'
+              type: object
+      summary: 获取软件列表
+      tags:
+      - 软件管理
+    post:
+      consumes:
+      - application/json
+      description: 创建新的软件项目
+      parameters:
+      - description: 软件信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/service.CreateSoftwareRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Software'
+              type: object
+      summary: 创建软件
+      tags:
+      - 软件管理
+  /admin/software/{id}:
+    delete:
+      description: 软删除软件
+      parameters:
+      - description: 软件ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Response'
+      summary: 删除软件
+      tags:
+      - 软件管理
+    get:
+      description: 根据ID获取软件详细信息
+      parameters:
+      - description: 软件ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Software'
+              type: object
+      summary: 获取软件详情
+      tags:
+      - 软件管理
+    put:
+      consumes:
+      - application/json
+      description: 更新软件信息
+      parameters:
+      - description: 软件ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 软件信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/service.UpdateSoftwareRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Software'
+              type: object
+      summary: 更新软件
+      tags:
+      - 软件管理
+  /admin/stats/downloads:
+    get:
+      description: 获取下载统计数据
+      parameters:
+      - description: 开始日期
+        in: query
+        name: start_date
+        type: string
+      - description: 结束日期
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/service.StatsResponse'
+                  type: array
+              type: object
+      summary: 获取下载统计
+      tags:
+      - 用量统计
+  /admin/stats/software/{id}/downloads:
+    get:
+      description: 获取指定软件的下载统计
+      parameters:
+      - description: 软件ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  format: int64
+                  type: integer
+              type: object
+      summary: 获取软件下载统计
+      tags:
+      - 用量统计
+  /admin/versions:
+    get:
+      description: 分页获取版本列表
+      parameters:
+      - description: 软件ID
+        in: query
+        name: software_id
+        type: integer
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.ListResponse'
+              type: object
+      summary: 获取版本列表
+      tags:
+      - 版本管理
+    post:
+      consumes:
+      - application/json
+      description: 创建新的软件版本
+      parameters:
+      - description: 版本信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/service.CreateVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Version'
+              type: object
+      summary: 创建版本
+      tags:
+      - 版本管理
+  /admin/versions/{id}:
+    delete:
+      description: 删除版本及其包文件
+      parameters:
+      - description: 版本ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Response'
+      summary: 删除版本
+      tags:
+      - 版本管理
+    get:
+      description: 根据ID获取版本详细信息
+      parameters:
+      - description: 版本ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Version'
+              type: object
+      summary: 获取版本详情
+      tags:
+      - 版本管理
+    put:
+      consumes:
+      - application/json
+      description: 更新版本信息
+      parameters:
+      - description: 版本ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 版本信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/service.UpdateVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Version'
+              type: object
+      summary: 更新版本
+      tags:
+      - 版本管理
+  /admin/versions/{id}/publish:
+    post:
+      description: 将版本状态改为已发布
+      parameters:
+      - description: 版本ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Version'
+              type: object
+      summary: 发布版本
+      tags:
+      - 版本管理
+  /admin/versions/{id}/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 上传版本安装包
+      parameters:
+      - description: 版本ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 安装包文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Version'
+              type: object
+      summary: 上传版本包
+      tags:
+      - 版本管理
+  /tenants:
+    get:
+      description: 分页获取租户列表（多租户预留）
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.ListResponse'
+              type: object
+      summary: 获取租户列表
+      tags:
+      - 租户管理
+    post:
+      consumes:
+      - application/json
+      description: 创建新的租户（多租户预留）
+      parameters:
+      - description: 租户信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateTenantRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.TenantResponse'
+              type: object
+      summary: 创建租户
+      tags:
+      - 租户管理
+  /tenants/{id}:
+    delete:
+      description: 删除租户（多租户预留）
+      parameters:
+      - description: 租户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Response'
+      summary: 删除租户
+      tags:
+      - 租户管理
+    get:
+      description: 根据ID获取租户详细信息（多租户预留）
+      parameters:
+      - description: 租户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Tenant'
+              type: object
+      summary: 获取租户详情
+      tags:
+      - 租户管理
+    put:
+      consumes:
+      - application/json
+      description: 更新租户信息（多租户预留）
+      parameters:
+      - description: 租户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 租户信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.UpdateTenantRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Tenant'
+              type: object
+      summary: 更新租户
+      tags:
+      - 租户管理
+  /tenants/{id}/reset-key:
+    post:
+      description: 重置租户的API Key（多租户预留）
+      parameters:
+      - description: 租户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+      summary: 重置API Key
+      tags:
+      - 租户管理
+  /update/check:
+    get:
+      consumes:
+      - application/json
+      description: 客户端检查是否有新版本可用
+      parameters:
+      - description: 软件标识
+        in: query
+        name: software_slug
+        required: true
+        type: string
+      - description: 当前版本号
+        in: query
+        name: current_version
+        required: true
+        type: string
+      - description: 平台
+        in: query
+        name: platform
+        type: string
+      - description: 设备ID
+        in: query
+        name: device_id
+        type: string
+      - description: API密钥
+        in: query
+        name: api_key
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/service.CheckUpdateResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Response'
+      summary: 检查更新
+      tags:
+      - 升级服务
+  /update/download/{id}:
+    get:
+      description: 下载指定版本的安装包
+      parameters:
+      - description: 版本ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: API密钥
+        in: query
+        name: api_key
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Response'
+      summary: 下载版本包
+      tags:
+      - 升级服务
+  /update/download/{id}/direct:
+    get:
+      description: 通过服务器中转下载安装包
+      parameters:
+      - description: 版本ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: API密钥
+        in: query
+        name: api_key
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Response'
+      summary: 直接下载版本包
+      tags:
+      - 升级服务
+  /update/latest:
+    get:
+      description: 获取软件的最新发布版本信息
+      parameters:
+      - description: 软件标识
+        in: query
+        name: software_slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Version'
+              type: object
+      summary: 获取最新版本
+      tags:
+      - 升级服务
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
