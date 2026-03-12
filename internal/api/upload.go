@@ -2,11 +2,9 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 

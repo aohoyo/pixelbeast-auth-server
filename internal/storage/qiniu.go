@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/qiniu/go-sdk/v7/auth/qbox"
@@ -130,7 +131,12 @@ func (p *QiniuProvider) Exists(ctx context.Context, key string) (bool, error) {
 func (p *QiniuProvider) GetURL(ctx context.Context, key string, expire time.Duration) (string, error) {
 	// 生成私有URL（带签名）
 	deadline := time.Now().Add(expire).Unix()
-	privateURL := storage.MakePrivateURL(p.mac, p.domain, key, deadline)
+	
+	// domain 需要去掉 https:// 前缀
+	domain := strings.TrimPrefix(p.domain, "https://")
+	domain = strings.TrimPrefix(domain, "http://")
+	
+	privateURL := storage.MakePrivateURL(p.mac, domain, key, deadline)
 	
 	return privateURL, nil
 }
