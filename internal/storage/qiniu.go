@@ -128,12 +128,9 @@ func (p *QiniuProvider) Exists(ctx context.Context, key string) (bool, error) {
 
 // GetURL 获取七牛云文件私有URL
 func (p *QiniuProvider) GetURL(ctx context.Context, key string, expire time.Duration) (string, error) {
-	// 构建公开URL
-	publicURL := fmt.Sprintf("https://%s/%s", p.domain, key)
-	
 	// 生成私有URL（带签名）
 	deadline := time.Now().Add(expire).Unix()
-	privateURL := storage.MakePrivateURL(p.mac, publicURL, deadline)
+	privateURL := storage.MakePrivateURL(p.mac, p.domain, key, deadline)
 	
 	return privateURL, nil
 }
