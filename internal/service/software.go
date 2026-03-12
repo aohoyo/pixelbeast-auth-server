@@ -46,6 +46,7 @@ type UpdateSoftwareRequest struct {
 	APIKey      string `json:"api_key"`
 	Description string `json:"description"`
 	Platform    string `json:"platform"`
+	Icon        string `json:"icon"`
 	Status      *int   `json:"status"`
 }
 
@@ -168,6 +169,9 @@ func (s *SoftwareService) Update(ctx context.Context, id uint64, req *UpdateSoft
 	}
 	if req.Platform != "" {
 		updates["platform"] = req.Platform
+	}
+	if req.Icon != "" {
+		updates["icon"] = req.Icon
 	}
 	if req.Status != nil {
 		updates["status"] = *req.Status
