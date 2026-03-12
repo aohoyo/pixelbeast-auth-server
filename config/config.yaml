@@ -18,52 +18,7 @@ redis:
   password: ""
   db: 1
 
-storage:
-  # 存储类型: local/aliyun/tencent/qiniu
-  # 默认使用七牛云（推荐，性价比高）
-  type: qiniu
-  
-  # 本地存储（测试环境）
-  local:
-    base_path: ./uploads
-    base_url: http://localhost:8080/uploads
-  
-  # 阿里云 OSS
-  aliyun:
-    endpoint: oss-cn-hangzhou.aliyuncs.com
-    access_key_id: your-access-key-id
-    access_key_secret: your-access-key-secret
-    bucket: your-bucket
-  
-  # 腾讯云 COS
-  tencent:
-    region: ap-guangzhou
-    secret_id: your-secret-id
-    secret_key: your-secret-key
-    bucket: your-bucket
-  
-  # 七牛云 Kodo（默认，推荐）
-  # 官网: https://www.qiniu.com
-  # 优势: 10GB免费存储，CDN加速，价格实惠
-  qiniu:
-    access_key: your-access-key
-    secret_key: your-secret-key
-    bucket: your-bucket
-    domain: your-domain.qiniudn.com
-
 jwt:
   secret: your-secret-key-change-this-in-production
   expire_hours: 24
 
-# Casdoor 认证配置
-casdoor:
-  endpoint: "http://casdoor.example.com"
-  client_id: "your-client-id"
-  client_secret: "your-client-secret"
-  organization: "your-org"
-  application: "pixelbeast"
-  # JWT 证书（用于验证 token），从 Casdoor 获取
-  certificate: |
-    -----BEGIN CERTIFICATE-----
-    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
-    -----END CERTIFICATE-----

@@ -18,15 +18,15 @@ import (
 
 // UpdateService 升级服务
 type UpdateService struct {
-	db       *gorm.DB
-	storage  storage.Provider
+	db              *gorm.DB
+	storageService  *StorageService
 }
 
 // NewUpdateService 创建升级服务
-func NewUpdateService(db *gorm.DB, storage storage.Provider) *UpdateService {
+func NewUpdateService(db *gorm.DB, storageService *StorageService) *UpdateService {
 	return &UpdateService{
-		db:      db,
-		storage: storage,
+		db:             db,
+		storageService: storageService,
 	}
 }
 
@@ -226,8 +226,12 @@ func (s *UpdateService) DeleteVersion(ctx context.Context, id uint64) error {
 
 	// 如果已上传包，删除存储
 	if version.PackageURL != "" {
-		key := storage.GenerateKey(version.SoftwareID, version.Version, "package")
-		_ = s.storage.Delete(ctx, key)
+		// 获取租户的存储提供者
+		provider, err := s.storageService.GetStorageProvider(ctx, version.TenantID)
+		if err == nil {
+			key := storage.GenerateKey(version.SoftwareID, version.Version, "package")
+			_ = provider.Delete(ctx, key)
+		}
 	}
 
 	if err := s.db.WithContext(ctx).Delete(&model.Version{}, id).Error; err != nil {
@@ -244,6 +248,12 @@ func (s *UpdateService) UploadPackage(ctx context.Context, versionID uint64, rea
 		return err
 	}
 
+	// 获取租户的存储提供者
+	provider, err := s.storageService.GetStorageProvider(ctx, version.TenantID)
+	if err != nil {
+		return fmt.Errorf("storage not configured: %w", err)
+	}
+
 	// 生成存储key
 	key := storage.GenerateKey(version.SoftwareID, version.Version, filename)
 
@@ -252,12 +262,12 @@ func (s *UpdateService) UploadPackage(ctx context.Context, versionID uint64, rea
 	teeReader := io.TeeReader(reader, hash)
 
 	// 上传到存储
-	if err := s.storage.Upload(ctx, key, teeReader, size, contentType); err != nil {
+	if err := provider.Upload(ctx, key, teeReader, size, contentType); err != nil {
 		return fmt.Errorf("failed to upload package: %w", err)
 	}
 
 	packageHash := hex.EncodeToString(hash.Sum(nil))
-	packageURL := s.storage.GetPublicURL(key)
+	packageURL := provider.GetPublicURL(key)
 
 	// 更新版本信息
 	updates := map[string]interface{}{

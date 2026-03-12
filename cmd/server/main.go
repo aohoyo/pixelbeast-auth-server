@@ -91,21 +91,20 @@ func main() {
 	}
 	defer redis.Close()
 
-	// 初始化存储
-	storageProvider, err := storage.NewProvider(&cfg.Storage)
-	if err != nil {
-		log.Fatalf("Failed to init storage: %v", err)
-	}
+	// 初始化存储服务（纯平台模式：租户自配存储）
+	// 注意：不再使用全局存储配置，改为每个租户独立配置
+	storageService := service.NewStorageService(database, cfg.JWT.Secret)
 
 	// 创建服务
 	softwareService := service.NewSoftwareService(database)
-	updateService := service.NewUpdateService(database, storageProvider)
+	updateService := service.NewUpdateService(database, storageService)
 	usageService := service.NewUsageService(database)
 
 	// 创建处理器
 	adminHandler := api.NewAdminHandler(softwareService, updateService, usageService, cfg.JWT.Secret)
 	updateHandler := api.NewUpdateHandler(updateService, usageService, softwareService)
 	tenantHandler := api.NewTenantHandler(database, cfg.JWT.Secret)
+	storageHandler := api.NewStorageHandler(storageService)
 
 	// 创建路由
 	r := gin.Default()
@@ -137,18 +136,16 @@ func main() {
 	// - /stats/* - 统计（需认证）
 	// - /update/* - 公开接口（API Key）
 	// - /tenant/* - 租户管理（需管理员权限）
+	// - /storage/* - 存储配置（需认证）
 	apiV1 := r.Group("/api/v1")
 	{
 		// 注册各模块路由
 		adminHandler.RegisterRoutes(apiV1)
 		updateHandler.RegisterRoutes(apiV1)
 		tenantHandler.RegisterRoutes(apiV1)
+		storageHandler.RegisterRoutes(apiV1, cfg.JWT.Secret)
 	}
 
-	// 静态文件服务（本地存储时使用）
-	if cfg.Storage.Type == "local" {
-		r.Static("/uploads", cfg.Storage.Local.BasePath)
-	}
 
 	// 创建HTTP服务器
 	srv := &http.Server{

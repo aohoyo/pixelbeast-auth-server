@@ -37,10 +37,29 @@ func NewQiniuProvider(cfg *QiniuConfig) (*QiniuProvider, error) {
 	}, nil
 }
 
+// getZone 根据区域代码获取七牛云Zone
+func getZone(region string) *storage.Zone {
+	switch region {
+	case "z0", "": // 华东（默认）
+		return &storage.ZoneHuadong
+	case "z1": // 华北
+		return &storage.ZoneHuabei
+	case "z2": // 华南
+		return &storage.ZoneHuanan
+	case "na0": // 北美
+		return &storage.ZoneBeimei
+	case "as0": // 东南亚
+		return &storage.ZoneXinjiapo
+	default:
+		return &storage.ZoneHuadong
+	}
+}
+
 // Upload 上传文件到七牛云
 func (p *QiniuProvider) Upload(ctx context.Context, key string, reader io.Reader, size int64, contentType string) error {
+	// 这里需要从配置中获取region，暂时使用华东
 	cfg := storage.Config{
-		Zone:          &storage.ZoneHuadong, // 默认华东区域
+		Zone:          &storage.ZoneHuadong,
 		UseHTTPS:      true,
 		UseCdnDomains: false,
 	}

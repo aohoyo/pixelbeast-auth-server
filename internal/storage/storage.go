@@ -71,6 +71,7 @@ type QiniuConfig struct {
 	AccessKey string `yaml:"access_key"`
 	SecretKey string `yaml:"secret_key"`
 	Bucket    string `yaml:"bucket"`
+	Region    string `yaml:"region"` // z0:华东 z1:华北 z2:华南 na0:北美 as0:东南亚
 	Domain    string `yaml:"domain"`
 }
 

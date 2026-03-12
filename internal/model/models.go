@@ -136,6 +136,24 @@ func (User) TableName() string {
 	return "user"
 }
 
+// TenantStorage 租户存储配置
+// 纯平台模式：每个租户必须自配存储
+type TenantStorage struct {
+	ID        uint64         `json:"id" gorm:"primaryKey"`
+	TenantID  uint64         `json:"tenant_id" gorm:"uniqueIndex;comment:租户ID"`
+	Type      string         `json:"type" gorm:"size:20;comment:存储类型 aliyun/tencent/qiniu/minio"`
+	Config    string         `json:"config" gorm:"type:text;comment:存储配置JSON(加密存储)"`
+	Status    int            `json:"status" gorm:"default:0;comment:状态 0未配置 1已配置 2验证失败"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+// TableName 指定表名
+func (TenantStorage) TableName() string {
+	return "tenant_storage"
+}
+
 // AutoMigrate 自动迁移数据库表
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
@@ -145,5 +163,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&DownloadLog{},
 		&UsageStats{},
 		&User{},
+		&TenantStorage{},
 	)
 }
