@@ -203,7 +203,7 @@ curl "http://localhost:8080/api/v1/update/check?software_slug=myapp&current_vers
 - [x] 存储插件化
 - [x] 多租户预留
 - [x] 用量统计预留
-- [ ] Web管理界面
+- [x] Web管理界面
 - [ ] 增量更新支持
 - [ ] 灰度发布
 - [ ] 签名验证
