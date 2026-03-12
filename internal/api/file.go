@@ -211,6 +211,8 @@ type CreateFileRecordRequest struct {
 	URL      string `json:"url" binding:"required"`
 	Size     int64  `json:"size"`
 	ParentID uint64 `json:"parent_id"`
+	Source   string `json:"source"`   // 来源：software/version/file
+	SourceID uint64 `json:"source_id"` // 关联的业务ID
 }
 
 // CreateFileRecord 创建文件记录（直传后调用）
@@ -239,6 +241,8 @@ func (h *FileHandler) CreateFileRecord(c *gin.Context) {
 		Size:     req.Size,
 		URL:      req.URL,
 		Path:     req.URL, // 使用URL作为路径
+		Source:   req.Source,
+		SourceID: req.SourceID,
 	}
 
 	if err := h.db.WithContext(c.Request.Context()).Create(file).Error; err != nil {

@@ -16,6 +16,9 @@ type File struct {
 	Size      int64     `json:"size"`
 	Path      string    `gorm:"size:500" json:"path"` // 存储路径
 	URL       string    `gorm:"size:500" json:"url"`  // 访问URL
+	// 文件来源信息
+	Source   string `gorm:"size:50;index:idx_file_source" json:"source"`   // 来源：software/version/file
+	SourceID uint64 `gorm:"index:idx_file_source_id" json:"source_id"`    // 关联的业务ID
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
