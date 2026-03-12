@@ -12,7 +12,6 @@ import (
 	"gorm.io/gorm"
 
 	"license-server/internal/model"
-	"license-server/internal/storage"
 )
 
 // FileService 文件服务
@@ -122,10 +121,23 @@ func (s *FileService) UploadFile(ctx context.Context, tenantID uint64, parentID 
 		return nil, err
 	}
 
-	// 生成存储路径
-	timestamp := time.Now().Unix()
 	ext := strings.ToLower(filepath.Ext(filename))
-	storageKey := fmt.Sprintf("files/%d/%d_%s", tenantID, timestamp, filename)
+	fileType := model.GetFileTypeByExt(ext)
+
+	// 检查同目录下是否有同名文件 - 如果存在则删除旧文件（覆盖逻辑）
+	var existing model.File
+	err = s.db.WithContext(ctx).
+		Where("tenant_id = ? AND parent_id = ? AND name = ? AND type = ?",
+			tenantID, parentID, filename, "file").
+		First(&existing).Error
+	if err == nil {
+		// 删除旧文件记录和存储
+		_ = provider.Delete(ctx, existing.Path)
+		s.db.WithContext(ctx).Delete(&existing)
+	}
+
+	// 生成存储路径（保持原文件名）
+	storageKey := fmt.Sprintf("files/%d/%s", tenantID, filename)
 
 	// 上传文件
 	contentType := getContentTypeByExt(ext)
@@ -142,7 +154,7 @@ func (s *FileService) UploadFile(ctx context.Context, tenantID uint64, parentID 
 		ParentID: parentID,
 		Name:     filename,
 		Type:     "file",
-		FileType: model.GetFileTypeByExt(ext),
+		FileType: fileType,
 		Size:     size,
 		Path:     storageKey,
 		URL:      url,
