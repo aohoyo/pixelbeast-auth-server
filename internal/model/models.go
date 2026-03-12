@@ -164,5 +164,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&UsageStats{},
 		&User{},
 		&TenantStorage{},
+		&File{},
 	)
 }

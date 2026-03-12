@@ -10,7 +10,6 @@ import (
 
 	"gorm.io/gorm"
 
-	"license-server/internal/model"
 	"license-server/internal/storage"
 )
 
@@ -47,7 +46,7 @@ func (s *UploadService) GetUploadToken(ctx context.Context, tenantID uint64, key
 		return nil, fmt.Errorf("获取存储配置失败: %w", err)
 	}
 
-	if !config.IsConfigured {
+	if !config.HasConfig {
 		return nil, fmt.Errorf("请先配置存储")
 	}
 
@@ -80,10 +79,7 @@ func (s *UploadService) UploadFile(ctx context.Context, tenantID uint64, key str
 	}
 
 	// 获取文件URL
-	url, err := provider.GetPublicURL(key)
-	if err != nil {
-		return "", fmt.Errorf("获取文件URL失败: %w", err)
-	}
+	url := provider.GetPublicURL(key)
 
 	return url, nil
 }
@@ -245,9 +241,15 @@ func (s *UploadService) getMinioUploadToken(ctx context.Context, tenantID uint64
 
 	expireAt := time.Now().Add(time.Hour).Unix()
 
+	// 从 Domain 字段获取 BaseURL
+	baseURL := config.Domain
+	if baseURL == "" {
+		baseURL = config.Endpoint
+	}
+
 	return &UploadToken{
 		Key:         key,
-		URL:         config.BaseURL,
+		URL:         baseURL,
 		Headers:     map[string]string{},
 		Params:      map[string]string{},
 		ContentType: "",

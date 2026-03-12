@@ -3,7 +3,6 @@ package api
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
