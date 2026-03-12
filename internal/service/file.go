@@ -245,19 +245,8 @@ func (s *FileService) GetDownloadURL(ctx context.Context, tenantID uint64, fileI
 		return "", fmt.Errorf("cannot download folder")
 	}
 
-	// 获取存储提供者
-	provider, err := s.storageService.GetStorageProvider(ctx, tenantID)
-	if err != nil {
-		return "", err
-	}
-
-	// 生成带签名的下载URL（1小时有效）
-	url, err := provider.GetURL(ctx, file.Path, time.Hour)
-	if err != nil {
-		return file.URL, nil // 如果生成签名URL失败，返回公开URL
-	}
-
-	return url, nil
+	// 直接使用公开URL（存储桶是公开的）
+	return file.URL, nil
 }
 
 // getContentTypeByExt 根据扩展名获取Content-Type
