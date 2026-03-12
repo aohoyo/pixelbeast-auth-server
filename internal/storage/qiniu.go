@@ -143,7 +143,10 @@ func (p *QiniuProvider) GetURL(ctx context.Context, key string, expire time.Dura
 
 // GetPublicURL 获取七牛云文件公开URL
 func (p *QiniuProvider) GetPublicURL(key string) string {
-	return fmt.Sprintf("https://%s/%s", p.domain, key)
+	// domain 需要去掉 https:// 前缀
+	domain := strings.TrimPrefix(p.domain, "https://")
+	domain = strings.TrimPrefix(domain, "http://")
+	return fmt.Sprintf("https://%s/%s", domain, key)
 }
 
 // List 列出七牛云文件
