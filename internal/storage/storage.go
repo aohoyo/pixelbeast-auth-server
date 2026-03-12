@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+// FileInfo 文件信息
+type FileInfo struct {
+	Name string
+	Type string // file 或 folder
+	Size int64
+	URL  string
+	Time time.Time
+}
+
 // Provider 存储提供者接口
 type Provider interface {
 	// Upload 上传文件
@@ -33,6 +42,9 @@ type Provider interface {
 
 	// GetPublicURL 获取公开访问URL
 	GetPublicURL(key string) string
+
+	// List 列出文件
+	List(ctx context.Context, prefix string) ([]FileInfo, error)
 }
 
 // Config 存储配置

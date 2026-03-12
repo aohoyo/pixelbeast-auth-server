@@ -108,7 +108,7 @@ func main() {
 	tenantHandler := api.NewTenantHandler(database, cfg.JWT.Secret)
 	storageHandler := api.NewStorageHandler(storageService)
 	uploadHandler := api.NewUploadHandler(uploadService)
-	fileHandler := api.NewFileHandler(fileService)
+	fileHandler := api.NewFileHandler(fileService, database)
 
 	// 创建路由
 	r := gin.Default()

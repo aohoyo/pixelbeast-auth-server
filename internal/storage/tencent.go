@@ -104,3 +104,29 @@ func (p *TencentProvider) GetURL(ctx context.Context, key string, expire time.Du
 func (p *TencentProvider) GetPublicURL(key string) string {
 	return fmt.Sprintf("https://%s.cos.%s.myqcloud.com/%s", p.config.Bucket, p.config.Region, key)
 }
+
+// List 列出COS文件
+func (p *TencentProvider) List(ctx context.Context, prefix string) ([]FileInfo, error) {
+	// 使用普通列表接口
+	result, _, err := p.client.Bucket.Get(ctx, &cos.BucketGetOptions{
+		Prefix: prefix,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list objects: %w", err)
+	}
+
+	files := make([]FileInfo, 0)
+	for _, obj := range result.Contents {
+		// 解析时间字符串
+		t, _ := time.Parse(time.RFC3339, obj.LastModified)
+		files = append(files, FileInfo{
+			Name: obj.Key,
+			Type: "file",
+			Size: obj.Size,
+			URL:  p.GetPublicURL(obj.Key),
+			Time: t,
+		})
+	}
+
+	return files, nil
+}

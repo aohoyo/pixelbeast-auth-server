@@ -99,3 +99,25 @@ func (p *AliyunProvider) GetPublicURL(key string) string {
 	// 构建公开URL
 	return fmt.Sprintf("https://%s.%s/%s", p.config.Bucket, p.config.Endpoint, key)
 }
+
+// List 列出OSS文件
+func (p *AliyunProvider) List(ctx context.Context, prefix string) ([]FileInfo, error) {
+	// 列出文件
+	result, err := p.bucket.ListObjects(oss.Prefix(prefix))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list objects: %w", err)
+	}
+
+	files := make([]FileInfo, 0)
+	for _, obj := range result.Objects {
+		files = append(files, FileInfo{
+			Name: obj.Key,
+			Type: "file",
+			Size: obj.Size,
+			URL:  p.GetPublicURL(obj.Key),
+			Time: obj.LastModified,
+		})
+	}
+
+	return files, nil
+}

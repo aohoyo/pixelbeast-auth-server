@@ -145,3 +145,26 @@ func (p *MinioProvider) GetURL(ctx context.Context, key string, expire time.Dura
 func (p *MinioProvider) GetPublicURL(key string) string {
 	return fmt.Sprintf("%s/%s", p.domain, key)
 }
+
+// List 列出MinIO文件
+func (p *MinioProvider) List(ctx context.Context, prefix string) ([]FileInfo, error) {
+	doneCh := make(chan struct{})
+	defer close(doneCh)
+
+	objectsCh := p.client.ListObjects(ctx, p.bucket, minio.ListObjectsOptions{
+		Prefix: prefix,
+	})
+
+	files := make([]FileInfo, 0)
+	for obj := range objectsCh {
+		files = append(files, FileInfo{
+			Name: obj.Key,
+			Type: "file",
+			Size: obj.Size,
+			URL:  p.GetPublicURL(obj.Key),
+			Time: obj.LastModified,
+		})
+	}
+
+	return files, nil
+}

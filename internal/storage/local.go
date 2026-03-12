@@ -112,3 +112,37 @@ func (p *LocalProvider) GetURL(ctx context.Context, key string, expire time.Dura
 func (p *LocalProvider) GetPublicURL(key string) string {
 	return fmt.Sprintf("%s/%s", p.baseURL, key)
 }
+
+// List 列出本地文件
+func (p *LocalProvider) List(ctx context.Context, prefix string) ([]FileInfo, error) {
+	fullPath := filepath.Join(p.basePath, prefix)
+
+	entries, err := os.ReadDir(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []FileInfo{}, nil
+		}
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	files := make([]FileInfo, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		filePath := filepath.Join(fullPath, name)
+		
+		info := FileInfo{
+			Name: filepath.Join(prefix, name),
+			Type: "file",
+		}
+
+		if fileInfo, err := os.Stat(filePath); err == nil {
+			info.Size = fileInfo.Size()
+			info.Time = fileInfo.ModTime()
+		}
+
+		info.URL = p.GetPublicURL(info.Name)
+		files = append(files, info)
+	}
+
+	return files, nil
+}

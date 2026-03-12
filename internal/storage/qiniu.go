@@ -137,3 +137,31 @@ func (p *QiniuProvider) GetURL(ctx context.Context, key string, expire time.Dura
 func (p *QiniuProvider) GetPublicURL(key string) string {
 	return fmt.Sprintf("https://%s/%s", p.domain, key)
 }
+
+// List 列出七牛云文件
+func (p *QiniuProvider) List(ctx context.Context, prefix string) ([]FileInfo, error) {
+	cfg := storage.Config{
+		Zone:          &storage.ZoneHuadong,
+		UseHTTPS:      true,
+		UseCdnDomains: false,
+	}
+
+	bucketManager := storage.NewBucketManager(p.mac, &cfg)
+	entries, _, _, _, err := bucketManager.ListFiles(p.bucket, prefix, "", "", 1000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list files: %w", err)
+	}
+
+	files := make([]FileInfo, 0)
+	for _, entry := range entries {
+		files = append(files, FileInfo{
+			Name: entry.Key,
+			Type: "file",
+			Size: entry.Fsize,
+			URL:  p.GetPublicURL(entry.Key),
+			Time: time.Unix(entry.PutTime/10000000, 0),
+		})
+	}
+
+	return files, nil
+}

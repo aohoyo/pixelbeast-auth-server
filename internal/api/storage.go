@@ -181,3 +181,135 @@ func (h *StorageHandler) TestStorageConfig(c *gin.Context) {
 		"msg":  "连接成功",
 	})
 }
+
+// GetStorageFiles 获取存储中的文件列表
+func (h *StorageHandler) GetStorageFiles(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	if tenantID == 0 {
+		tenantID = middleware.GetUserID(c)
+	}
+
+	path := c.Query("path")
+	if path == "" {
+		path = "files"
+	}
+
+	// 获取存储提供者
+	provider, err := h.storageService.GetStorageProvider(c.Request.Context(), tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": 500,
+			"msg":  "获取存储失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 列出文件
+	files, err := provider.List(c.Request.Context(), path)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": 500,
+			"msg":  "获取文件列表失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 转换为响应格式
+	result := make([]map[string]interface{}, 0, len(files))
+	for _, file := range files {
+		result = append(result, map[string]interface{}{
+			"name": file.Name,
+			"type": file.Type,
+			"size": file.Size,
+			"url":  file.URL,
+			"time": file.Time,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"msg":  "success",
+		"data": result,
+	})
+}
+
+// DeleteStorageFile 删除存储中的文件
+func (h *StorageHandler) DeleteStorageFile(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	if tenantID == 0 {
+		tenantID = middleware.GetUserID(c)
+	}
+
+	var req struct {
+		Key string `json:"key" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code": 400,
+			"msg":  err.Error(),
+		})
+		return
+	}
+
+	// 获取存储提供者
+	provider, err := h.storageService.GetStorageProvider(c.Request.Context(), tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": 500,
+			"msg":  "获取存储失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 删除文件
+	if err := provider.Delete(c.Request.Context(), req.Key); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": 500,
+			"msg":  "删除失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"msg":  "删除成功",
+	})
+}
+
+// GetStorageFileURL 获取文件URL
+func (h *StorageHandler) GetStorageFileURL(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	if tenantID == 0 {
+		tenantID = middleware.GetUserID(c)
+	}
+
+	key := c.Query("key")
+	if key == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code": 400,
+			"msg":  "key不能为空",
+		})
+		return
+	}
+
+	// 获取存储提供者
+	provider, err := h.storageService.GetStorageProvider(c.Request.Context(), tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": 500,
+			"msg":  "获取存储失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 获取URL
+	url := provider.GetPublicURL(key)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"msg":  "success",
+		"data": map[string]string{
+			"url": url,
+		},
+	})
+}

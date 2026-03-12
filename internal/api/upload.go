@@ -200,13 +200,10 @@ func (h *UploadHandler) DeleteFile(c *gin.Context) {
 }
 
 // generateStorageKey 生成存储键名
-// 格式：{path_prefix}/{timestamp}_{filename}
+// 格式：{path_prefix}/{filename}
 func generateStorageKey(pathPrefix, filename string) string {
-	timestamp := time.Now().Unix()
 	// 清理文件名，移除路径分隔符
 	filename = strings.ReplaceAll(filename, "/", "_")
 	filename = strings.ReplaceAll(filename, "\\", "_")
-	// 添加时间戳避免重名
-	name := fmt.Sprintf("%d_%s", timestamp, filename)
-	return filepath.Join(pathPrefix, name)
+	return filepath.Join(pathPrefix, filename)
 }
