@@ -436,3 +436,65 @@ func (s *StorageService) HasStorageConfig(ctx context.Context, tenantID uint64) 
 	}
 	return count > 0, nil
 }
+
+// DecryptedStorageConfig 解密后的存储配置
+type DecryptedStorageConfig struct {
+	Type      string
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	Region    string
+	Domain    string
+	Endpoint  string
+	BasePath  string
+	BaseURL   string
+}
+
+// GetDecryptedConfig 获取解密后的存储配置
+func (s *StorageService) GetDecryptedConfig(ctx context.Context, tenantID uint64) (*DecryptedStorageConfig, error) {
+	var config model.TenantStorage
+	err := s.db.WithContext(ctx).Where("tenant_id = ? AND status = 1", tenantID).First(&config).Error
+
+	if err == gorm.ErrRecordNotFound {
+		return nil, fmt.Errorf("storage not configured")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get storage config: %w", err)
+	}
+
+	// 解密配置
+	decryptedConfig, err := s.decrypt(config.Config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt config: %w", err)
+	}
+
+	var configMap map[string]interface{}
+	if err := json.Unmarshal([]byte(decryptedConfig), &configMap); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	result := &DecryptedStorageConfig{
+		Type: config.Type,
+	}
+
+	if v, ok := configMap["access_key"].(string); ok {
+		result.AccessKey = v
+	}
+	if v, ok := configMap["secret_key"].(string); ok {
+		result.SecretKey = v
+	}
+	if v, ok := configMap["bucket"].(string); ok {
+		result.Bucket = v
+	}
+	if v, ok := configMap["region"].(string); ok {
+		result.Region = v
+	}
+	if v, ok := configMap["domain"].(string); ok {
+		result.Domain = v
+	}
+	if v, ok := configMap["endpoint"].(string); ok {
+		result.Endpoint = v
+	}
+
+	return result, nil
+}

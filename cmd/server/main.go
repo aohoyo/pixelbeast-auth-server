@@ -99,12 +99,14 @@ func main() {
 	softwareService := service.NewSoftwareService(database)
 	updateService := service.NewUpdateService(database, storageService)
 	usageService := service.NewUsageService(database)
+	uploadService := service.NewUploadService(database, storageService)
 
 	// 创建处理器
 	adminHandler := api.NewAdminHandler(softwareService, updateService, usageService, cfg.JWT.Secret)
 	updateHandler := api.NewUpdateHandler(updateService, usageService, softwareService)
 	tenantHandler := api.NewTenantHandler(database, cfg.JWT.Secret)
 	storageHandler := api.NewStorageHandler(storageService)
+	uploadHandler := api.NewUploadHandler(uploadService)
 
 	// 创建路由
 	r := gin.Default()
@@ -144,6 +146,7 @@ func main() {
 		updateHandler.RegisterRoutes(apiV1)
 		tenantHandler.RegisterRoutes(apiV1)
 		storageHandler.RegisterRoutes(apiV1, cfg.JWT.Secret)
+		uploadHandler.RegisterRoutes(apiV1, cfg.JWT.Secret)
 	}
 
 
