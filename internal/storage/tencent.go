@@ -77,6 +77,41 @@ func (p *TencentProvider) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// Move 移动COS文件（复制+删除）
+func (p *TencentProvider) Move(ctx context.Context, srcKey, dstKey string) error {
+	// 源文件路径格式：bucket/key
+	src := fmt.Sprintf("%s/%s", p.config.Bucket, srcKey)
+	
+	// 复制文件
+	opt := &cos.ObjectCopyOptions{}
+	_, _, err := p.client.Object.Copy(ctx, dstKey, src, opt)
+	if err != nil {
+		return fmt.Errorf("failed to copy object: %w", err)
+	}
+
+	// 删除原文件
+	_, err = p.client.Object.Delete(ctx, srcKey)
+	if err != nil {
+		// 尝试回滚
+		_, _ = p.client.Object.Delete(ctx, dstKey)
+		return fmt.Errorf("failed to delete source object: %w", err)
+	}
+
+	return nil
+}
+
+// Copy 复制COS文件
+func (p *TencentProvider) Copy(ctx context.Context, srcKey, dstKey string) error {
+	src := fmt.Sprintf("%s/%s", p.config.Bucket, srcKey)
+	opt := &cos.ObjectCopyOptions{}
+	_, _, err := p.client.Object.Copy(ctx, dstKey, src, opt)
+	if err != nil {
+		return fmt.Errorf("failed to copy object: %w", err)
+	}
+
+	return nil
+}
+
 // Exists 检查COS文件是否存在
 func (p *TencentProvider) Exists(ctx context.Context, key string) (bool, error) {
 	_, err := p.client.Object.Head(ctx, key, nil)

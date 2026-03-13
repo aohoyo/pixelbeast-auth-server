@@ -73,6 +73,35 @@ func (p *AliyunProvider) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// Move 移动OSS文件（复制+删除）
+func (p *AliyunProvider) Move(ctx context.Context, srcKey, dstKey string) error {
+	// 复制文件到新位置
+	_, err := p.bucket.CopyObject(srcKey, dstKey)
+	if err != nil {
+		return fmt.Errorf("failed to copy object: %w", err)
+	}
+
+	// 删除原文件
+	err = p.bucket.DeleteObject(srcKey)
+	if err != nil {
+		// 尝试回滚：删除目标文件
+		_ = p.bucket.DeleteObject(dstKey)
+		return fmt.Errorf("failed to delete source object: %w", err)
+	}
+
+	return nil
+}
+
+// Copy 复制OSS文件
+func (p *AliyunProvider) Copy(ctx context.Context, srcKey, dstKey string) error {
+	_, err := p.bucket.CopyObject(srcKey, dstKey)
+	if err != nil {
+		return fmt.Errorf("failed to copy object: %w", err)
+	}
+
+	return nil
+}
+
 // Exists 检查OSS文件是否存在
 func (p *AliyunProvider) Exists(ctx context.Context, key string) (bool, error) {
 	exists, err := p.bucket.IsObjectExist(key)

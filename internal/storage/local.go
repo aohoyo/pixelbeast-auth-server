@@ -88,6 +88,58 @@ func (p *LocalProvider) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// Move 移动/重命名本地文件
+func (p *LocalProvider) Move(ctx context.Context, srcKey, dstKey string) error {
+	srcPath := filepath.Join(p.basePath, srcKey)
+	dstPath := filepath.Join(p.basePath, dstKey)
+
+	// 创建目标目录
+	dstDir := filepath.Dir(dstPath)
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// 移动文件
+	if err := os.Rename(srcPath, dstPath); err != nil {
+		return fmt.Errorf("failed to move file: %w", err)
+	}
+
+	return nil
+}
+
+// Copy 复制本地文件
+func (p *LocalProvider) Copy(ctx context.Context, srcKey, dstKey string) error {
+	srcPath := filepath.Join(p.basePath, srcKey)
+	dstPath := filepath.Join(p.basePath, dstKey)
+
+	// 创建目标目录
+	dstDir := filepath.Dir(dstPath)
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// 打开源文件
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer srcFile.Close()
+
+	// 创建目标文件
+	dstFile, err := os.Create(dstPath)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer dstFile.Close()
+
+	// 复制内容
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("failed to copy file content: %w", err)
+	}
+
+	return nil
+}
+
 // Exists 检查本地文件是否存在
 func (p *LocalProvider) Exists(ctx context.Context, key string) (bool, error) {
 	fullPath := filepath.Join(p.basePath, key)

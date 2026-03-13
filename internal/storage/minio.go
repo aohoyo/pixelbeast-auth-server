@@ -117,6 +117,53 @@ func (p *MinioProvider) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// Move 移动MinIO文件（复制+删除）
+func (p *MinioProvider) Move(ctx context.Context, srcKey, dstKey string) error {
+	// 复制文件
+	src := minio.CopySrcOptions{
+		Bucket: p.bucket,
+		Object: srcKey,
+	}
+	dst := minio.CopyDestOptions{
+		Bucket: p.bucket,
+		Object: dstKey,
+	}
+	
+	_, err := p.client.CopyObject(ctx, dst, src)
+	if err != nil {
+		return fmt.Errorf("failed to copy object: %w", err)
+	}
+
+	// 删除原文件
+	err = p.client.RemoveObject(ctx, p.bucket, srcKey, minio.RemoveObjectOptions{})
+	if err != nil {
+		// 尝试回滚
+		_ = p.client.RemoveObject(ctx, p.bucket, dstKey, minio.RemoveObjectOptions{})
+		return fmt.Errorf("failed to delete source object: %w", err)
+	}
+
+	return nil
+}
+
+// Copy 复制MinIO文件
+func (p *MinioProvider) Copy(ctx context.Context, srcKey, dstKey string) error {
+	src := minio.CopySrcOptions{
+		Bucket: p.bucket,
+		Object: srcKey,
+	}
+	dst := minio.CopyDestOptions{
+		Bucket: p.bucket,
+		Object: dstKey,
+	}
+	
+	_, err := p.client.CopyObject(ctx, dst, src)
+	if err != nil {
+		return fmt.Errorf("failed to copy object: %w", err)
+	}
+
+	return nil
+}
+
 // Exists 检查MinIO文件是否存在
 func (p *MinioProvider) Exists(ctx context.Context, key string) (bool, error) {
 	_, err := p.client.StatObject(ctx, p.bucket, key, minio.StatObjectOptions{})

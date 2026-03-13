@@ -107,6 +107,40 @@ func (p *QiniuProvider) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// Move 移动七牛云文件
+func (p *QiniuProvider) Move(ctx context.Context, srcKey, dstKey string) error {
+	cfg := storage.Config{
+		Zone:          &storage.ZoneHuadong,
+		UseHTTPS:      true,
+		UseCdnDomains: false,
+	}
+
+	bucketManager := storage.NewBucketManager(p.mac, &cfg)
+	err := bucketManager.Move(p.bucket, srcKey, p.bucket, dstKey, true)
+	if err != nil {
+		return fmt.Errorf("failed to move file: %w", err)
+	}
+
+	return nil
+}
+
+// Copy 复制七牛云文件
+func (p *QiniuProvider) Copy(ctx context.Context, srcKey, dstKey string) error {
+	cfg := storage.Config{
+		Zone:          &storage.ZoneHuadong,
+		UseHTTPS:      true,
+		UseCdnDomains: false,
+	}
+
+	bucketManager := storage.NewBucketManager(p.mac, &cfg)
+	err := bucketManager.Copy(p.bucket, srcKey, p.bucket, dstKey, true)
+	if err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	return nil
+}
+
 // Exists 检查七牛云文件是否存在
 func (p *QiniuProvider) Exists(ctx context.Context, key string) (bool, error) {
 	cfg := storage.Config{

@@ -33,6 +33,16 @@ type Provider interface {
 	// Delete 删除文件
 	Delete(ctx context.Context, key string) error
 
+	// Move 移动文件（重命名/移动目录）
+	// srcKey: 源文件路径
+	// dstKey: 目标文件路径
+	Move(ctx context.Context, srcKey, dstKey string) error
+
+	// Copy 复制文件
+	// srcKey: 源文件路径
+	// dstKey: 目标文件路径
+	Copy(ctx context.Context, srcKey, dstKey string) error
+
 	// Exists 检查文件是否存在
 	Exists(ctx context.Context, key string) (bool, error)
 

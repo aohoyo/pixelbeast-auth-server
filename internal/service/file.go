@@ -7,6 +7,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -402,7 +403,7 @@ func (s *FileService) GetStorageStats(ctx context.Context, tenantID uint64) (*St
 	}, nil
 }
 
-// MoveFiles 移动文件
+// MoveFiles 移动文件（真正移动存储文件）
 func (s *FileService) MoveFiles(ctx context.Context, tenantID uint64, fileIDs []uint64, targetID uint64) error {
 	// 验证目标文件夹存在
 	if targetID > 0 {
@@ -414,14 +415,61 @@ func (s *FileService) MoveFiles(ctx context.Context, tenantID uint64, fileIDs []
 		}
 	}
 
-	// 移动文件
-	return s.db.WithContext(ctx).
-		Model(&model.File{}).
-		Where("id IN ? AND tenant_id = ?", fileIDs, tenantID).
-		Update("parent_id", targetID).Error
+	// 获取存储提供者
+	provider, err := s.storageService.GetStorageProvider(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("storage not configured")
+	}
+
+	// 获取目标文件夹路径
+	targetPath := ""
+	if targetID > 0 {
+		var targetFolder model.File
+		if err := s.db.WithContext(ctx).First(&targetFolder, targetID).Error; err == nil {
+			targetPath = targetFolder.Path
+		}
+	}
+
+	// 移动每个文件
+	for _, fileID := range fileIDs {
+		var file model.File
+		if err := s.db.WithContext(ctx).
+			Where("id = ? AND tenant_id = ?", fileID, tenantID).
+			First(&file).Error; err != nil {
+			continue
+		}
+
+		// 只移动文件，不移动文件夹
+		if !file.IsFolder() && file.Path != "" {
+			// 计算新的存储路径
+			newPath := fmt.Sprintf("%s/%s", targetPath, file.Name)
+			if targetPath == "" {
+				newPath = file.Name
+			}
+
+			// 调用存储接口移动文件
+			if err := provider.Move(ctx, file.Path, newPath); err != nil {
+				continue // 存储移动失败，继续处理
+			}
+
+			// 更新数据库记录
+			updates := map[string]interface{}{
+				"parent_id":  targetID,
+				"path":       newPath,
+				"url":        provider.GetPublicURL(newPath),
+				"updated_at": time.Now(),
+			}
+			s.db.WithContext(ctx).Model(&file).Updates(updates)
+		} else {
+			// 文件夹只更新 parent_id
+			s.db.WithContext(ctx).Model(&file).Update("parent_id", targetID)
+		}
+	}
+
+	return nil
 }
 
-// CopyFiles 复制文件
+// CopyFiles 复制文件（真正复制存储文件）
 func (s *FileService) CopyFiles(ctx context.Context, tenantID uint64, fileIDs []uint64, targetID uint64) error {
 	// 验证目标文件夹存在
 	if targetID > 0 {
@@ -433,6 +481,21 @@ func (s *FileService) CopyFiles(ctx context.Context, tenantID uint64, fileIDs []
 		}
 	}
 
+	// 获取存储提供者
+	provider, err := s.storageService.GetStorageProvider(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("storage not configured")
+	}
+
+	// 获取目标文件夹路径
+	targetPath := ""
+	if targetID > 0 {
+		var targetFolder model.File
+		if err := s.db.WithContext(ctx).First(&targetFolder, targetID).Error; err == nil {
+			targetPath = targetFolder.Path
+		}
+	}
+
 	// 获取要复制的文件
 	var files []model.File
 	if err := s.db.WithContext(ctx).
@@ -441,23 +504,36 @@ func (s *FileService) CopyFiles(ctx context.Context, tenantID uint64, fileIDs []
 		return err
 	}
 
-	// 创建副本
+	// 复制每个文件
 	for _, file := range files {
+		// 计算新的存储路径
+		newName := file.Name + " (副本)"
+		newPath := fmt.Sprintf("%s/%s", targetPath, newName)
+		if targetPath == "" {
+			newPath = newName
+		}
+
+		if !file.IsFolder() && file.Path != "" {
+			// 调用存储接口复制文件
+			if err := provider.Copy(ctx, file.Path, newPath); err != nil {
+				continue
+			}
+		}
+
+		// 创建数据库记录
 		newFile := model.File{
 			TenantID: tenantID,
 			ParentID: targetID,
-			Name:     file.Name + " (副本)",
+			Name:     newName,
 			Type:     file.Type,
 			FileType: file.FileType,
 			Size:     file.Size,
-			Path:     file.Path,
-			URL:      file.URL,
+			Path:     newPath,
+			URL:      provider.GetPublicURL(newPath),
 			Source:   file.Source,
 			SourceID: file.SourceID,
 		}
-		if err := s.db.WithContext(ctx).Create(&newFile).Error; err != nil {
-			return err
-		}
+		s.db.WithContext(ctx).Create(&newFile)
 	}
 
 	return nil
