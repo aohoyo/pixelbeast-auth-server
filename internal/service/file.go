@@ -277,3 +277,188 @@ func getContentTypeByExt(ext string) string {
 		return "application/octet-stream"
 	}
 }
+
+// ListFilesWithFilter 获取文件列表（支持搜索、排序、筛选）
+func (s *FileService) ListFilesWithFilter(ctx context.Context, tenantID uint64, parentID uint64, search, sort, order, fileType string) ([]FileResponse, error) {
+	query := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND parent_id = ?", tenantID, parentID)
+
+	// 搜索
+	if search != "" {
+		query = query.Where("name LIKE ?", "%"+search+"%")
+	}
+
+	// 类型筛选
+	if fileType != "" {
+		query = query.Where("file_type = ?", fileType)
+	}
+
+	// 排序
+	orderBy := "type DESC, "
+	switch sort {
+	case "name":
+		orderBy += "name"
+	case "size":
+		orderBy += "size"
+	case "updated_at":
+		orderBy += "updated_at"
+	default:
+		orderBy += "updated_at"
+	}
+
+	if order == "asc" {
+		orderBy += " ASC"
+	} else {
+		orderBy += " DESC"
+	}
+
+	query = query.Order(orderBy)
+
+	var files []model.File
+	err := query.Find(&files).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to list files: %w", err)
+	}
+
+	result := make([]FileResponse, 0, len(files))
+	for _, file := range files {
+		resp := FileResponse{
+			ID:        file.ID,
+			Name:      file.Name,
+			Type:      file.Type,
+			FileType:  file.FileType,
+			Size:      file.Size,
+			URL:       file.URL,
+			CreatedAt: file.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt: file.UpdatedAt.Format("2006-01-02 15:04:05"),
+		}
+
+		// 如果是文件夹，统计子文件数量
+		if file.IsFolder() {
+			var count int64
+			s.db.WithContext(ctx).Model(&model.File{}).
+				Where("parent_id = ?", file.ID).
+				Count(&count)
+			resp.ChildrenCount = count
+		}
+
+		result = append(result, resp)
+	}
+
+	return result, nil
+}
+
+// StorageStatsResponse 存储统计响应
+type StorageStatsResponse struct {
+	TotalSize   int64            `json:"total_size"`
+	TotalFiles  int64            `json:"total_files"`
+	TotalFolders int64           `json:"total_folders"`
+	ByType      map[string]int64 `json:"by_type"`
+}
+
+// GetStorageStats 获取存储统计
+func (s *FileService) GetStorageStats(ctx context.Context, tenantID uint64) (*StorageStatsResponse, error) {
+	var totalSize int64
+	var totalFiles int64
+	var totalFolders int64
+
+	// 统计总大小
+	s.db.WithContext(ctx).Model(&model.File{}).
+		Where("tenant_id = ? AND type = ?", tenantID, "file").
+		Select("COALESCE(SUM(size), 0)").
+		Scan(&totalSize)
+
+	// 统计文件数量
+	s.db.WithContext(ctx).Model(&model.File{}).
+		Where("tenant_id = ? AND type = ?", tenantID, "file").
+		Count(&totalFiles)
+
+	// 统计文件夹数量
+	s.db.WithContext(ctx).Model(&model.File{}).
+		Where("tenant_id = ? AND type = ?", tenantID, "folder").
+		Count(&totalFolders)
+
+	// 按类型统计
+	byType := make(map[string]int64)
+	var typeStats []struct {
+		FileType string
+		Total    int64
+	}
+	s.db.WithContext(ctx).Model(&model.File{}).
+		Select("file_type, COUNT(*) as total").
+		Where("tenant_id = ? AND type = ?", tenantID, "file").
+		Group("file_type").
+		Scan(&typeStats)
+
+	for _, stat := range typeStats {
+		byType[stat.FileType] = stat.Total
+	}
+
+	return &StorageStatsResponse{
+		TotalSize:    totalSize,
+		TotalFiles:   totalFiles,
+		TotalFolders: totalFolders,
+		ByType:       byType,
+	}, nil
+}
+
+// MoveFiles 移动文件
+func (s *FileService) MoveFiles(ctx context.Context, tenantID uint64, fileIDs []uint64, targetID uint64) error {
+	// 验证目标文件夹存在
+	if targetID > 0 {
+		var target model.File
+		if err := s.db.WithContext(ctx).
+			Where("id = ? AND tenant_id = ? AND type = ?", targetID, tenantID, "folder").
+			First(&target).Error; err != nil {
+			return fmt.Errorf("target folder not found")
+		}
+	}
+
+	// 移动文件
+	return s.db.WithContext(ctx).
+		Model(&model.File{}).
+		Where("id IN ? AND tenant_id = ?", fileIDs, tenantID).
+		Update("parent_id", targetID).Error
+}
+
+// CopyFiles 复制文件
+func (s *FileService) CopyFiles(ctx context.Context, tenantID uint64, fileIDs []uint64, targetID uint64) error {
+	// 验证目标文件夹存在
+	if targetID > 0 {
+		var target model.File
+		if err := s.db.WithContext(ctx).
+			Where("id = ? AND tenant_id = ? AND type = ?", targetID, tenantID, "folder").
+			First(&target).Error; err != nil {
+			return fmt.Errorf("target folder not found")
+		}
+	}
+
+	// 获取要复制的文件
+	var files []model.File
+	if err := s.db.WithContext(ctx).
+		Where("id IN ? AND tenant_id = ?", fileIDs, tenantID).
+		Find(&files).Error; err != nil {
+		return err
+	}
+
+	// 创建副本
+	for _, file := range files {
+		newFile := model.File{
+			TenantID: tenantID,
+			ParentID: targetID,
+			Name:     file.Name + " (副本)",
+			Type:     file.Type,
+			FileType: file.FileType,
+			Size:     file.Size,
+			Path:     file.Path,
+			URL:      file.URL,
+			Source:   file.Source,
+			SourceID: file.SourceID,
+		}
+		if err := s.db.WithContext(ctx).Create(&newFile).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

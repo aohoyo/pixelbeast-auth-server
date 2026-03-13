@@ -34,9 +34,12 @@ func (h *FileHandler) RegisterRoutes(r *gin.RouterGroup, jwtSecret string) {
 	auth.Use(middleware.AuthMiddleware(jwtSecret))
 	{
 		auth.GET("", h.ListFiles)
+		auth.GET("/stats", h.GetStorageStats)
 		auth.POST("/folder", h.CreateFolder)
 		auth.POST("", h.UploadFile)
 		auth.POST("/record", h.CreateFileRecord)
+		auth.POST("/move", h.MoveFiles)
+		auth.POST("/copy", h.CopyFiles)
 		auth.DELETE("/:id", h.DeleteFile)
 		auth.DELETE("/batch", h.BatchDelete)
 		auth.PUT("/:id/rename", h.RenameFile)
@@ -52,8 +55,22 @@ func (h *FileHandler) ListFiles(c *gin.Context) {
 	}
 
 	parentID, _ := strconv.ParseUint(c.Query("parent_id"), 10, 64)
+	
+	// 搜索、排序、筛选参数
+	search := c.Query("search")
+	sort := c.Query("sort")     // name, size, updated_at
+	order := c.Query("order")   // asc, desc
+	fileType := c.Query("type") // image, video, audio, document, other
 
-	files, err := h.fileService.ListFiles(c.Request.Context(), tenantID, parentID)
+	// 默认排序
+	if sort == "" {
+		sort = "updated_at"
+	}
+	if order == "" {
+		order = "desc"
+	}
+
+	files, err := h.fileService.ListFilesWithFilter(c.Request.Context(), tenantID, parentID, search, sort, order, fileType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code": 500,
@@ -341,5 +358,100 @@ func (h *FileHandler) GetDownloadURL(c *gin.Context) {
 		"data": gin.H{
 			"url": url,
 		},
+	})
+}
+
+// GetStorageStats 获取存储统计
+func (h *FileHandler) GetStorageStats(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	if tenantID == 0 {
+		tenantID = middleware.GetUserID(c)
+	}
+
+	stats, err := h.fileService.GetStorageStats(c.Request.Context(), tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": 500,
+			"msg":  err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"msg":  "success",
+		"data": stats,
+	})
+}
+
+// MoveFilesRequest 移动文件请求
+type MoveFilesRequest struct {
+	FileIDs  []uint64 `json:"file_ids" binding:"required"`
+	TargetID uint64   `json:"target_id"` // 目标文件夹ID，0表示根目录
+}
+
+// MoveFiles 移动文件
+func (h *FileHandler) MoveFiles(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	if tenantID == 0 {
+		tenantID = middleware.GetUserID(c)
+	}
+
+	var req MoveFilesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code": 400,
+			"msg":  err.Error(),
+		})
+		return
+	}
+
+	if err := h.fileService.MoveFiles(c.Request.Context(), tenantID, req.FileIDs, req.TargetID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": 500,
+			"msg":  err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"msg":  "移动成功",
+	})
+}
+
+// CopyFilesRequest 复制文件请求
+type CopyFilesRequest struct {
+	FileIDs  []uint64 `json:"file_ids" binding:"required"`
+	TargetID uint64   `json:"target_id"` // 目标文件夹ID，0表示根目录
+}
+
+// CopyFiles 复制文件
+func (h *FileHandler) CopyFiles(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	if tenantID == 0 {
+		tenantID = middleware.GetUserID(c)
+	}
+
+	var req CopyFilesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code": 400,
+			"msg":  err.Error(),
+		})
+		return
+	}
+
+	if err := h.fileService.CopyFiles(c.Request.Context(), tenantID, req.FileIDs, req.TargetID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": 500,
+			"msg":  err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"msg":  "复制成功",
 	})
 }
