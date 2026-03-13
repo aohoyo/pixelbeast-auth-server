@@ -101,9 +101,10 @@ func main() {
 	usageService := service.NewUsageService(database)
 	uploadService := service.NewUploadService(database, storageService)
 	fileService := service.NewFileService(database, storageService)
+	signingService := service.NewSigningService(database)
 
 	// 创建处理器
-	adminHandler := api.NewAdminHandler(softwareService, updateService, usageService, cfg.JWT.Secret)
+	adminHandler := api.NewAdminHandler(softwareService, updateService, usageService, signingService, cfg.JWT.Secret)
 	updateHandler := api.NewUpdateHandler(updateService, usageService, softwareService)
 	tenantHandler := api.NewTenantHandler(database, cfg.JWT.Secret)
 	storageHandler := api.NewStorageHandler(storageService)

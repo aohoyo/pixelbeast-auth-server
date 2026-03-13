@@ -48,6 +48,11 @@ type Version struct {
 	PackageSize   int64          `json:"package_size" gorm:"comment:包大小(字节)"`
 	PackageHash   string         `json:"package_hash" gorm:"size:128;comment:包哈希值"`
 	PackageHashAlgo string       `json:"package_hash_algo" gorm:"size:20;default:sha256;comment:哈希算法"`
+	
+	// 签名信息
+	Signature     string         `json:"signature" gorm:"type:text;comment:签名(Base64)"`
+	SigningKeyID  uint64         `json:"signing_key_id" gorm:"index;comment:签名密钥ID"`
+	
 	IsForced      bool           `json:"is_forced" gorm:"default:false;comment:是否强制更新"`
 	IsIncremental bool           `json:"is_incremental" gorm:"default:false;comment:是否增量包"`
 	MinVersion    string         `json:"min_version" gorm:"size:50;comment:最低支持升级版本"`
@@ -64,7 +69,8 @@ type Version struct {
 	DeletedAt     gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// 关联
-	Software Software `json:"software,omitempty" gorm:"foreignKey:SoftwareID"`
+	Software   Software    `json:"software,omitempty" gorm:"foreignKey:SoftwareID"`
+	SigningKey *SigningKey `json:"signing_key,omitempty" gorm:"foreignKey:SigningKeyID"`
 }
 
 // TableName 指定表名
@@ -92,6 +98,26 @@ type VersionFile struct {
 // TableName 指定表名
 func (VersionFile) TableName() string {
 	return "version_file"
+}
+
+// SigningKey 签名密钥
+// 用于版本签名验证
+type SigningKey struct {
+	ID          uint64         `json:"id" gorm:"primaryKey"`
+	TenantID    uint64         `json:"tenant_id" gorm:"index;comment:租户ID"`
+	Name        string         `json:"name" gorm:"size:100;not null;comment:密钥名称"`
+	Algorithm   string         `json:"algorithm" gorm:"size:20;default:rsa2048;comment:算法 rsa2048/ed25519"`
+	PublicKey   string         `json:"public_key" gorm:"type:text;not null;comment:公钥(PEM格式)"`
+	PrivateKey  string         `json:"-" gorm:"type:text;comment:私钥(加密存储)"`
+	IsActive    bool           `json:"is_active" gorm:"default:true;comment:是否活跃"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+// TableName 指定表名
+func (SigningKey) TableName() string {
+	return "signing_key"
 }
 
 // Tenant 租户信息
@@ -190,6 +216,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&Software{},
 		&Version{},
 		&VersionFile{},
+		&SigningKey{},
 		&Tenant{},
 		&DownloadLog{},
 		&UsageStats{},

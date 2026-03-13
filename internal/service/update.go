@@ -20,6 +20,7 @@ import (
 type UpdateService struct {
 	db              *gorm.DB
 	storageService  *StorageService
+	signingService  *SigningService
 }
 
 // NewUpdateService 创建升级服务
@@ -27,6 +28,7 @@ func NewUpdateService(db *gorm.DB, storageService *StorageService) *UpdateServic
 	return &UpdateService{
 		db:             db,
 		storageService: storageService,
+		signingService: NewSigningService(db),
 	}
 }
 
@@ -79,6 +81,9 @@ type CheckUpdateResponse struct {
 	IsIncremental   bool   `json:"is_incremental,omitempty"`
 	MinVersion      string `json:"min_version,omitempty"`
 	PublishedAt     string `json:"published_at,omitempty"`
+	// 签名信息
+	Signature string `json:"signature,omitempty"`
+	PublicKey string `json:"public_key,omitempty"`
 }
 
 // VersionResponse 版本响应
@@ -307,6 +312,19 @@ func (s *UpdateService) UploadPackage(ctx context.Context, versionID uint64, rea
 		"package_hash_algo": "sha256",
 	}
 
+	// 尝试自动签名
+	if s.signingService != nil {
+		activeKey, err := s.signingService.GetActiveSigningKey(version.TenantID)
+		if err == nil {
+			// 有活跃的签名密钥，自动签名
+			signature, err := s.signingService.SignData(activeKey.ID, []byte(packageHash))
+			if err == nil {
+				updates["signature"] = signature
+				updates["signing_key_id"] = activeKey.ID
+			}
+		}
+	}
+
 	if err := s.db.WithContext(ctx).Model(version).Updates(updates).Error; err != nil {
 		return fmt.Errorf("failed to update version package info: %w", err)
 	}
@@ -408,6 +426,15 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, req *CheckUpdateRequest
 		}
 	}
 
+	// 获取签名公钥（如果有）
+	var publicKey string
+	if latestVersion.SigningKeyID > 0 && s.signingService != nil {
+		signingKey, err := s.signingService.GetSigningKey(latestVersion.SigningKeyID)
+		if err == nil {
+			publicKey = signingKey.PublicKey
+		}
+	}
+
 	return &CheckUpdateResponse{
 		HasUpdate:       true,
 		Version:         latestVersion.Version,
@@ -421,6 +448,8 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, req *CheckUpdateRequest
 		IsIncremental:   latestVersion.IsIncremental,
 		MinVersion:      latestVersion.MinVersion,
 		PublishedAt:     latestVersion.PublishedAt.Format("2006-01-02T00:00:00Z"),
+		Signature:        latestVersion.Signature,
+		PublicKey:        publicKey,
 	}, nil
 }
 

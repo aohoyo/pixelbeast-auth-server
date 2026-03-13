@@ -20,6 +20,7 @@ type AdminHandler struct {
 	softwareService *service.SoftwareService
 	updateService   *service.UpdateService
 	usageService    *service.UsageService
+	signingService  *service.SigningService
 	jwtSecret       string
 }
 
@@ -28,12 +29,14 @@ func NewAdminHandler(
 	softwareService *service.SoftwareService,
 	updateService *service.UpdateService,
 	usageService *service.UsageService,
+	signingService *service.SigningService,
 	jwtSecret string,
 ) *AdminHandler {
 	return &AdminHandler{
 		softwareService: softwareService,
 		updateService:   updateService,
 		usageService:    usageService,
+		signingService:  signingService,
 		jwtSecret:       jwtSecret,
 	}
 }
@@ -83,6 +86,16 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 		{
 			stats.GET("/downloads", h.GetDownloadStats)
 			stats.GET("/software/:id/downloads", h.GetSoftwareDownloads)
+		}
+
+		// 签名密钥管理
+		signing := auth.Group("/signing-key")
+		{
+			signing.POST("", h.CreateSigningKey)
+			signing.GET("", h.ListSigningKeys)
+			signing.GET("/:id", h.GetSigningKey)
+			signing.DELETE("/:id", h.DeleteSigningKey)
+			signing.POST("/:id/activate", h.ActivateSigningKey)
 		}
 	}
 }
@@ -680,6 +693,136 @@ func (h *AdminHandler) DeleteVersionFiles(c *gin.Context) {
 	}
 
 	if err := h.updateService.DeleteVersionFiles(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success"})
+}
+
+// ========== 签名密钥管理 ==========
+
+// CreateSigningKeyRequest 创建签名密钥请求
+type CreateSigningKeyRequest struct {
+	Name      string `json:"name" binding:"required"`
+	Algorithm string `json:"algorithm"` // rsa2048, rsa4096
+}
+
+// CreateSigningKey 创建签名密钥
+// @Summary 创建签名密钥
+// @Description 生成新的RSA签名密钥对
+// @Tags 签名密钥
+// @Accept json
+// @Produce json
+// @Param body body CreateSigningKeyRequest true "密钥信息"
+// @Success 200 {object} Response{data=model.SigningKey}
+// @Router /signing-key [post]
+func (h *AdminHandler) CreateSigningKey(c *gin.Context) {
+	var req CreateSigningKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": err.Error()})
+		return
+	}
+
+	if req.Algorithm == "" {
+		req.Algorithm = "rsa2048"
+	}
+
+	tenantID := middleware.GetTenantID(c)
+
+	key, err := h.signingService.CreateSigningKey(tenantID, req.Name, req.Algorithm)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success", "data": key})
+}
+
+// ListSigningKeys 列出签名密钥
+// @Summary 列出签名密钥
+// @Description 获取所有签名密钥列表
+// @Tags 签名密钥
+// @Produce json
+// @Success 200 {object} Response{data=[]model.SigningKey}
+// @Router /signing-key [get]
+func (h *AdminHandler) ListSigningKeys(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
+	keys, err := h.signingService.ListSigningKeys(tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success", "data": keys})
+}
+
+// GetSigningKey 获取签名密钥详情
+// @Summary 获取签名密钥详情
+// @Description 获取指定签名密钥的详细信息
+// @Tags 签名密钥
+// @Produce json
+// @Param id path int true "密钥ID"
+// @Success 200 {object} Response{data=model.SigningKey}
+// @Router /signing-key/{id} [get]
+func (h *AdminHandler) GetSigningKey(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "invalid id"})
+		return
+	}
+
+	key, err := h.signingService.GetSigningKey(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success", "data": key})
+}
+
+// DeleteSigningKey 删除签名密钥
+// @Summary 删除签名密钥
+// @Description 删除指定的签名密钥
+// @Tags 签名密钥
+// @Produce json
+// @Param id path int true "密钥ID"
+// @Success 200 {object} Response
+// @Router /signing-key/{id} [delete]
+func (h *AdminHandler) DeleteSigningKey(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "invalid id"})
+		return
+	}
+
+	if err := h.signingService.DeleteSigningKey(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success"})
+}
+
+// ActivateSigningKey 激活签名密钥
+// @Summary 激活签名密钥
+// @Description 设置指定的签名密钥为活跃状态
+// @Tags 签名密钥
+// @Produce json
+// @Param id path int true "密钥ID"
+// @Success 200 {object} Response
+// @Router /signing-key/{id}/activate [post]
+func (h *AdminHandler) ActivateSigningKey(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "invalid id"})
+		return
+	}
+
+	tenantID := middleware.GetTenantID(c)
+
+	if err := h.signingService.SetActiveKey(tenantID, id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": err.Error()})
 		return
 	}
