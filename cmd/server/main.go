@@ -108,7 +108,7 @@ func main() {
 	updateHandler := api.NewUpdateHandler(updateService, usageService, softwareService)
 	tenantHandler := api.NewTenantHandler(database, cfg.JWT.Secret)
 	storageHandler := api.NewStorageHandler(storageService)
-	uploadHandler := api.NewUploadHandler(uploadService)
+	uploadHandler := api.NewUploadHandler(uploadService, fileService)
 	fileHandler := api.NewFileHandler(fileService, database)
 
 	// 创建路由

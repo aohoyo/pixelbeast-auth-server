@@ -9,18 +9,21 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"license-server/internal/middleware"
+	"license-server/internal/model"
 	"license-server/internal/service"
 )
 
 // UploadHandler 上传处理器
 type UploadHandler struct {
 	uploadService *service.UploadService
+	fileService   *service.FileService
 }
 
 // NewUploadHandler 创建上传处理器
-func NewUploadHandler(uploadService *service.UploadService) *UploadHandler {
+func NewUploadHandler(uploadService *service.UploadService, fileService *service.FileService) *UploadHandler {
 	return &UploadHandler{
 		uploadService: uploadService,
+		fileService:   fileService,
 	}
 }
 
@@ -139,6 +142,23 @@ func (h *UploadHandler) UploadFile(c *gin.Context) {
 			"msg":  err.Error(),
 		})
 		return
+	}
+
+	// 自动创建文件记录到文件管理
+	if h.fileService != nil {
+		ext := strings.ToLower(filepath.Ext(header.Filename))
+		fileRecord := &model.File{
+			TenantID: tenantID,
+			ParentID: 0, // 根目录
+			Name:     header.Filename,
+			Type:     "file",
+			FileType: model.GetFileTypeByExt(ext),
+			Size:     header.Size,
+			Path:     key,
+			URL:      url,
+			Source:   "upload",
+		}
+		_ = h.fileService.CreateFileRecord(c.Request.Context(), fileRecord)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

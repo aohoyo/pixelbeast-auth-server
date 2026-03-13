@@ -462,3 +462,8 @@ func (s *FileService) CopyFiles(ctx context.Context, tenantID uint64, fileIDs []
 
 	return nil
 }
+
+// CreateFileRecord 创建文件记录（用于上传时自动记录）
+func (s *FileService) CreateFileRecord(ctx context.Context, file *model.File) error {
+	return s.db.WithContext(ctx).Create(file).Error
+}
