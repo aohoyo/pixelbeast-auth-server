@@ -41,6 +41,7 @@ type Version struct {
 	SoftwareID    uint64         `json:"software_id" gorm:"index;not null"`
 	Version       string         `json:"version" gorm:"size:50;not null;comment:版本号"`
 	VersionCode   int            `json:"version_code" gorm:"comment:版本代码，用于比较"`
+	Channel       string         `json:"channel" gorm:"size:20;default:stable;comment:发布渠道 stable/beta/alpha/dev"`
 	ChangeLog     string         `json:"changelog" gorm:"type:text;comment:更新日志"`
 	Screenshots   string         `json:"screenshots" gorm:"type:text;comment:版本截图URLs(JSON数组)"`
 	PackageURL    string         `json:"package_url" gorm:"size:500;comment:安装包URL"`

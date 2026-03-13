@@ -35,6 +35,7 @@ type CreateVersionRequest struct {
 	TenantID      uint64 `json:"tenant_id"`
 	SoftwareID    uint64 `json:"software_id" binding:"required"`
 	Version       string `json:"version" binding:"required"`
+	Channel       string `json:"channel"`
 	ChangeLog     string `json:"changelog"`
 	IsForced      bool   `json:"is_forced"`
 	IsIncremental bool   `json:"is_incremental"`
@@ -44,6 +45,7 @@ type CreateVersionRequest struct {
 // UpdateVersionRequest 更新版本请求
 type UpdateVersionRequest struct {
 	ChangeLog     string `json:"changelog"`
+	Channel       string `json:"channel"`
 	IsForced      *bool  `json:"is_forced"`
 	IsIncremental *bool  `json:"is_incremental"`
 	MinVersion    string `json:"min_version"`
@@ -130,6 +132,7 @@ func (s *UpdateService) CreateVersion(ctx context.Context, req *CreateVersionReq
 		SoftwareID:    req.SoftwareID,
 		Version:       req.Version,
 		VersionCode:   versionCode,
+		Channel:       req.Channel,
 		ChangeLog:     req.ChangeLog,
 		IsForced:      req.IsForced,
 		IsIncremental: req.IsIncremental,
@@ -195,6 +198,9 @@ func (s *UpdateService) UpdateVersion(ctx context.Context, id uint64, req *Updat
 
 	if req.ChangeLog != "" {
 		updates["changelog"] = req.ChangeLog
+	}
+	if req.Channel != "" {
+		updates["channel"] = req.Channel
 	}
 	if req.IsForced != nil {
 		updates["is_forced"] = *req.IsForced
