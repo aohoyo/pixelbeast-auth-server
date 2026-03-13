@@ -48,6 +48,11 @@ type UpdateVersionRequest struct {
 	IsIncremental *bool  `json:"is_incremental"`
 	MinVersion    string `json:"min_version"`
 	Status        *int   `json:"status"`
+	
+	// 灰度发布配置
+	GrayEnabled   *bool  `json:"gray_enabled"`
+	GrayPercent   *int   `json:"gray_percent"`
+	GrayStatus    *int   `json:"gray_status"`
 }
 
 // CheckUpdateRequest 检查更新请求
@@ -60,37 +65,39 @@ type CheckUpdateRequest struct {
 
 // CheckUpdateResponse 检查更新响应
 type CheckUpdateResponse struct {
-	HasUpdate     bool   `json:"has_update"`
-	Version       string `json:"version,omitempty"`
-	VersionCode   int    `json:"version_code,omitempty"`
-	ChangeLog     string `json:"changelog,omitempty"`
-	DownloadURL   string `json:"download_url,omitempty"`
-	PackageSize   int64  `json:"package_size,omitempty"`
-	PackageHash   string `json:"package_hash,omitempty"`
-	IsForced      bool   `json:"is_forced,omitempty"`
-	IsIncremental bool   `json:"is_incremental,omitempty"`
-	MinVersion    string `json:"min_version,omitempty"`
-	PublishedAt   string `json:"published_at,omitempty"`
+	HasUpdate       bool   `json:"has_update"`
+	Version         string `json:"version,omitempty"`
+	VersionCode     int    `json:"version_code,omitempty"`
+	ChangeLog       string `json:"changelog,omitempty"`
+	DownloadURL     string `json:"download_url,omitempty"`
+	PackageSize     int64  `json:"package_size,omitempty"`
+	PackageHash     string `json:"package_hash,omitempty"`
+	PackageHashAlgo string `json:"package_hash_algo,omitempty"`
+	IsForced        bool   `json:"is_forced,omitempty"`
+	IsIncremental   bool   `json:"is_incremental,omitempty"`
+	MinVersion      string `json:"min_version,omitempty"`
+	PublishedAt     string `json:"published_at,omitempty"`
 }
 
 // VersionResponse 版本响应
 type VersionResponse struct {
-	ID            uint64 `json:"id"`
-	TenantID      uint64 `json:"tenant_id"`
-	SoftwareID    uint64 `json:"software_id"`
-	Version       string `json:"version"`
-	VersionCode   int    `json:"version_code"`
-	ChangeLog     string `json:"changelog"`
-	PackageURL    string `json:"package_url"`
-	PackageSize   int64  `json:"package_size"`
-	PackageHash   string `json:"package_hash"`
-	IsForced      bool   `json:"is_forced"`
-	IsIncremental bool   `json:"is_incremental"`
-	MinVersion    string `json:"min_version"`
-	Status        int    `json:"status"`
-	PublishedAt   string `json:"published_at"`
-	CreatedAt     string `json:"created_at"`
-	UpdatedAt     string `json:"updated_at"`
+	ID              uint64 `json:"id"`
+	TenantID        uint64 `json:"tenant_id"`
+	SoftwareID      uint64 `json:"software_id"`
+	Version         string `json:"version"`
+	VersionCode     int    `json:"version_code"`
+	ChangeLog       string `json:"changelog"`
+	PackageURL      string `json:"package_url"`
+	PackageSize     int64  `json:"package_size"`
+	PackageHash     string `json:"package_hash"`
+	PackageHashAlgo string `json:"package_hash_algo"`
+	IsForced        bool   `json:"is_forced"`
+	IsIncremental   bool   `json:"is_incremental"`
+	MinVersion      string `json:"min_version"`
+	Status          int    `json:"status"`
+	PublishedAt     string `json:"published_at"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
 }
 
 // CreateVersion 创建版本
@@ -204,6 +211,23 @@ func (s *UpdateService) UpdateVersion(ctx context.Context, id uint64, req *Updat
 			updates["published_at"] = gorm.Expr("NOW()")
 		}
 	}
+	
+	// 灰度配置更新
+	if req.GrayEnabled != nil {
+		updates["gray_enabled"] = *req.GrayEnabled
+	}
+	if req.GrayPercent != nil {
+		if *req.GrayPercent < 0 {
+			*req.GrayPercent = 0
+		}
+		if *req.GrayPercent > 100 {
+			*req.GrayPercent = 100
+		}
+		updates["gray_percent"] = *req.GrayPercent
+	}
+	if req.GrayStatus != nil {
+		updates["gray_status"] = *req.GrayStatus
+	}
 
 	if len(updates) == 0 {
 		return version, nil
@@ -271,9 +295,10 @@ func (s *UpdateService) UploadPackage(ctx context.Context, versionID uint64, rea
 
 	// 更新版本信息
 	updates := map[string]interface{}{
-		"package_url":  packageURL,
-		"package_size": size,
-		"package_hash": packageHash,
+		"package_url":       packageURL,
+		"package_size":      size,
+		"package_hash":      packageHash,
+		"package_hash_algo": "sha256",
 	}
 
 	if err := s.db.WithContext(ctx).Model(version).Updates(updates).Error; err != nil {
@@ -318,6 +343,48 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, req *CheckUpdateRequest
 		return nil, fmt.Errorf("failed to get latest version: %w", err)
 	}
 
+	// 灰度发布检查
+	if latestVersion.GrayEnabled && latestVersion.GrayPercent > 0 {
+		// 灰度进行中才参与灰度判断
+		if latestVersion.GrayStatus == 1 {
+			// 根据 DeviceID 决定是否返回灰度版本
+			// 使用 DeviceID 的 hash 值取模来判断
+			if req.DeviceID != "" {
+				hash := sha256.Sum256([]byte(req.DeviceID))
+				hashInt := int(hash[0])<<24 | int(hash[1])<<16 | int(hash[2])<<8 | int(hash[3])
+				percent := hashInt % 100
+				
+				// 如果不在灰度范围内，查找上一个稳定版本
+				if percent >= latestVersion.GrayPercent {
+					var stableVersion model.Version
+					if err := s.db.WithContext(ctx).
+						Where("software_id = ? AND status = ? AND version_code > ? AND (gray_enabled = ? OR gray_status = ?)", 
+							software.ID, 1, currentVersionCode, false, 2).
+						Order("version_code DESC").
+						First(&stableVersion).Error; err == nil {
+						latestVersion = stableVersion
+					} else {
+						// 没有稳定版本，不返回更新
+						return &CheckUpdateResponse{HasUpdate: false}, nil
+					}
+				}
+			}
+		} else if latestVersion.GrayStatus == 0 || latestVersion.GrayStatus == 3 {
+			// 灰度未开始或已暂停，不返回灰度版本
+			var stableVersion model.Version
+			if err := s.db.WithContext(ctx).
+				Where("software_id = ? AND status = ? AND version_code > ? AND (gray_enabled = ? OR gray_status = ?)", 
+					software.ID, 1, currentVersionCode, false, 2).
+				Order("version_code DESC").
+				First(&stableVersion).Error; err == nil {
+				latestVersion = stableVersion
+			} else {
+				return &CheckUpdateResponse{HasUpdate: false}, nil
+			}
+		}
+		// GrayStatus == 2 已完成，正常返回灰度版本
+	}
+
 	// 检查增量更新条件
 	if latestVersion.IsIncremental && latestVersion.MinVersion != "" {
 		minVersionCode, _ := parseVersionCode(latestVersion.MinVersion)
@@ -336,17 +403,18 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, req *CheckUpdateRequest
 	}
 
 	return &CheckUpdateResponse{
-		HasUpdate:     true,
-		Version:       latestVersion.Version,
-		VersionCode:   latestVersion.VersionCode,
-		ChangeLog:     latestVersion.ChangeLog,
-		DownloadURL:   latestVersion.PackageURL,
-		PackageSize:   latestVersion.PackageSize,
-		PackageHash:   latestVersion.PackageHash,
-		IsForced:      latestVersion.IsForced,
-		IsIncremental: latestVersion.IsIncremental,
-		MinVersion:    latestVersion.MinVersion,
-		PublishedAt:   latestVersion.PublishedAt.Format("2006-01-02T00:00:00Z"),
+		HasUpdate:       true,
+		Version:         latestVersion.Version,
+		VersionCode:     latestVersion.VersionCode,
+		ChangeLog:       latestVersion.ChangeLog,
+		DownloadURL:     latestVersion.PackageURL,
+		PackageSize:     latestVersion.PackageSize,
+		PackageHash:     latestVersion.PackageHash,
+		PackageHashAlgo: latestVersion.PackageHashAlgo,
+		IsForced:        latestVersion.IsForced,
+		IsIncremental:   latestVersion.IsIncremental,
+		MinVersion:      latestVersion.MinVersion,
+		PublishedAt:     latestVersion.PublishedAt.Format("2006-01-02T00:00:00Z"),
 	}, nil
 }
 
@@ -391,4 +459,165 @@ func parseVersionCode(version string) (int, error) {
 	}
 
 	return code, nil
+}
+
+// ========== 增量更新相关 ==========
+
+// FileInfo 文件信息
+type FileInfo struct {
+	Path        string `json:"path"`
+	Size        int64  `json:"size"`
+	Hash        string `json:"hash"`
+	HashAlgo    string `json:"hash_algo"`
+	DownloadURL string `json:"download_url"`
+}
+
+// DeltaCheckRequest 增量检查请求
+type DeltaCheckRequest struct {
+	SoftwareSlug   string            `json:"software_slug" binding:"required"`
+	CurrentVersion string            `json:"current_version" binding:"required"`
+	LocalFiles     map[string]string `json:"local_files"` // path -> hash
+}
+
+// DeltaCheckResponse 增量检查响应
+type DeltaCheckResponse struct {
+	HasUpdate    bool       `json:"has_update"`
+	Version      string     `json:"version,omitempty"`
+	ChangedFiles []FileInfo `json:"changed_files,omitempty"`
+	NewFiles     []FileInfo `json:"new_files,omitempty"`
+	DeletedFiles []string   `json:"deleted_files,omitempty"`
+	DeltaSize    int64      `json:"delta_size,omitempty"`
+	FullSize     int64      `json:"full_size,omitempty"`
+	FullURL      string     `json:"full_url,omitempty"`
+	FullHash     string     `json:"full_hash,omitempty"`
+}
+
+// CheckDeltaUpdate 检查增量更新
+func (s *UpdateService) CheckDeltaUpdate(ctx context.Context, req *DeltaCheckRequest) (*DeltaCheckResponse, error) {
+	// 获取软件信息
+	var software model.Software
+	if err := s.db.WithContext(ctx).Where("slug = ?", req.SoftwareSlug).First(&software).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("software not found")
+		}
+		return nil, fmt.Errorf("failed to get software: %w", err)
+	}
+
+	// 解析当前版本
+	currentVersionCode, err := parseVersionCode(req.CurrentVersion)
+	if err != nil {
+		return nil, fmt.Errorf("invalid current version: %w", err)
+	}
+
+	// 获取最新发布版本
+	var latestVersion model.Version
+	if err := s.db.WithContext(ctx).
+		Where("software_id = ? AND status = ? AND version_code > ?", software.ID, 1, currentVersionCode).
+		Order("version_code DESC").
+		First(&latestVersion).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return &DeltaCheckResponse{HasUpdate: false}, nil
+		}
+		return nil, fmt.Errorf("failed to get latest version: %w", err)
+	}
+
+	// 获取最新版本的文件清单
+	var versionFiles []model.VersionFile
+	if err := s.db.WithContext(ctx).
+		Where("version_id = ?", latestVersion.ID).
+		Find(&versionFiles).Error; err != nil {
+		return nil, fmt.Errorf("failed to get version files: %w", err)
+	}
+
+	// 如果没有文件清单，返回全量更新信息
+	if len(versionFiles) == 0 {
+		return &DeltaCheckResponse{
+			HasUpdate: true,
+			Version:   latestVersion.Version,
+			FullSize:  latestVersion.PackageSize,
+			FullURL:   latestVersion.PackageURL,
+			FullHash:  latestVersion.PackageHash,
+		}, nil
+	}
+
+	// 计算增量
+	response := &DeltaCheckResponse{
+		HasUpdate:    true,
+		Version:      latestVersion.Version,
+		ChangedFiles: []FileInfo{},
+		NewFiles:     []FileInfo{},
+		DeletedFiles: []string{},
+		DeltaSize:    0,
+		FullSize:     latestVersion.PackageSize,
+		FullURL:      latestVersion.PackageURL,
+		FullHash:     latestVersion.PackageHash,
+	}
+
+	// 新版本文件映射
+	newFileMap := make(map[string]model.VersionFile)
+	for _, f := range versionFiles {
+		newFileMap[f.Path] = f
+	}
+
+	// 找出变化和新增的文件
+	for path, newFile := range newFileMap {
+		localHash, exists := req.LocalFiles[path]
+
+		fileInfo := FileInfo{
+			Path:        newFile.Path,
+			Size:        newFile.Size,
+			Hash:        newFile.Hash,
+			HashAlgo:    newFile.HashAlgo,
+			DownloadURL: newFile.DownloadURL,
+		}
+
+		if !exists {
+			// 新增文件
+			response.NewFiles = append(response.NewFiles, fileInfo)
+			response.DeltaSize += newFile.Size
+		} else if localHash != newFile.Hash {
+			// 文件变化
+			response.ChangedFiles = append(response.ChangedFiles, fileInfo)
+			response.DeltaSize += newFile.Size
+		}
+	}
+
+	// 找出删除的文件
+	for path := range req.LocalFiles {
+		if _, exists := newFileMap[path]; !exists {
+			response.DeletedFiles = append(response.DeletedFiles, path)
+		}
+	}
+
+	return response, nil
+}
+
+// GetVersionFiles 获取版本文件清单
+func (s *UpdateService) GetVersionFiles(ctx context.Context, versionID uint64) ([]model.VersionFile, error) {
+	var files []model.VersionFile
+	if err := s.db.WithContext(ctx).
+		Where("version_id = ?", versionID).
+		Order("path ASC").
+		Find(&files).Error; err != nil {
+		return nil, fmt.Errorf("failed to get version files: %w", err)
+	}
+	return files, nil
+}
+
+// SaveVersionFile 保存版本文件
+func (s *UpdateService) SaveVersionFile(ctx context.Context, file *model.VersionFile) error {
+	if err := s.db.WithContext(ctx).Create(file).Error; err != nil {
+		return fmt.Errorf("failed to save version file: %w", err)
+	}
+	return nil
+}
+
+// DeleteVersionFiles 删除版本文件清单
+func (s *UpdateService) DeleteVersionFiles(ctx context.Context, versionID uint64) error {
+	if err := s.db.WithContext(ctx).
+		Where("version_id = ?", versionID).
+		Delete(&model.VersionFile{}).Error; err != nil {
+		return fmt.Errorf("failed to delete version files: %w", err)
+	}
+	return nil
 }

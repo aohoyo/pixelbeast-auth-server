@@ -36,6 +36,9 @@ func (h *UpdateHandler) RegisterRoutes(r *gin.RouterGroup) {
 		update.GET("/check", h.CheckUpdate)
 		update.POST("/check", h.CheckUpdate)
 
+		// 增量更新检查
+		update.POST("/delta", h.CheckDeltaUpdate)
+
 		// 下载版本包 - 需要API Key
 		update.GET("/download/:id", middleware.APIKeyAuth(), h.DownloadPackage)
 	}
@@ -203,4 +206,48 @@ func (h *UpdateHandler) GetLatestVersion(c *gin.Context) {
 
 	// TODO: 实现获取最新版本逻辑
 	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success", "data": nil})
+}
+
+// CheckDeltaUpdate 检查增量更新
+// @Summary 检查增量更新
+// @Description 客户端上报本地文件清单，服务端计算差异返回增量更新信息
+// @Tags 升级服务
+// @Accept json
+// @Produce json
+// @Param body body service.DeltaCheckRequest true "增量检查请求"
+// @Success 200 {object} Response{data=service.DeltaCheckResponse}
+// @Router /update/delta [post]
+func (h *UpdateHandler) CheckDeltaUpdate(c *gin.Context) {
+	// 从 Header 获取 API Key
+	apiKey := c.GetHeader("X-API-Key")
+	if apiKey == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "missing api key"})
+		return
+	}
+
+	// 验证 API Key
+	software, err := h.softwareService.GetByAPIKey(c.Request.Context(), apiKey)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "invalid api key"})
+		return
+	}
+
+	var req service.DeltaCheckRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": err.Error()})
+		return
+	}
+
+	// 使用 API Key 关联的软件标识
+	if req.SoftwareSlug == "" {
+		req.SoftwareSlug = software.Slug
+	}
+
+	resp, err := h.updateService.CheckDeltaUpdate(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success", "data": resp})
 }

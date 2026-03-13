@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"license-server/internal/middleware"
+	"license-server/internal/model"
 	"license-server/internal/service"
 )
 
@@ -71,6 +72,10 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 			version.DELETE("/:id", h.DeleteVersion)
 			version.POST("/:id/publish", h.PublishVersion)
 			version.POST("/:id/upload", h.UploadPackage)
+			// 文件清单管理
+			version.GET("/:id/files", h.GetVersionFiles)
+			version.POST("/:id/files", h.SaveVersionFiles)
+			version.DELETE("/:id/files", h.DeleteVersionFiles)
 		}
 
 		// 统计
@@ -571,6 +576,115 @@ func generateAPIKey() string {
 	bytes := make([]byte, 16)
 	rand.Read(bytes)
 	return hex.EncodeToString(bytes)
+}
+
+// GetVersionFiles 获取版本文件清单
+// @Summary 获取版本文件清单
+// @Description 获取指定版本的所有文件清单
+// @Tags 版本管理
+// @Produce json
+// @Param id path int true "版本ID"
+// @Success 200 {object} Response{data=[]model.VersionFile}
+// @Router /version/{id}/files [get]
+func (h *AdminHandler) GetVersionFiles(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "invalid id"})
+		return
+	}
+
+	files, err := h.updateService.GetVersionFiles(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success", "data": files})
+}
+
+// SaveVersionFilesRequest 保存版本文件请求
+type SaveVersionFilesRequest struct {
+	Files []struct {
+		Path        string `json:"path"`
+		Size        int64  `json:"size"`
+		Hash        string `json:"hash"`
+		HashAlgo    string `json:"hash_algo"`
+		DownloadURL string `json:"download_url"`
+	} `json:"files"`
+}
+
+// SaveVersionFiles 批量保存版本文件
+// @Summary 批量保存版本文件
+// @Description 批量保存版本的文件清单
+// @Tags 版本管理
+// @Accept json
+// @Produce json
+// @Param id path int true "版本ID"
+// @Param body body SaveVersionFilesRequest true "文件清单"
+// @Success 200 {object} Response
+// @Router /version/{id}/files [post]
+func (h *AdminHandler) SaveVersionFiles(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "invalid id"})
+		return
+	}
+
+	var req SaveVersionFilesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": err.Error()})
+		return
+	}
+
+	// 先删除旧文件清单
+	if err := h.updateService.DeleteVersionFiles(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": err.Error()})
+		return
+	}
+
+	// 保存新文件清单
+	for _, f := range req.Files {
+		file := &model.VersionFile{
+			VersionID:   id,
+			Path:        f.Path,
+			Size:        f.Size,
+			Hash:        f.Hash,
+			HashAlgo:    f.HashAlgo,
+			DownloadURL: f.DownloadURL,
+		}
+		if file.HashAlgo == "" {
+			file.HashAlgo = "sha256"
+		}
+		if err := h.updateService.SaveVersionFile(c.Request.Context(), file); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": err.Error()})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success"})
+}
+
+// DeleteVersionFiles 删除版本文件清单
+// @Summary 删除版本文件清单
+// @Description 删除指定版本的所有文件清单
+// @Tags 版本管理
+// @Produce json
+// @Param id path int true "版本ID"
+// @Success 200 {object} Response
+// @Router /version/{id}/files [delete]
+func (h *AdminHandler) DeleteVersionFiles(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "invalid id"})
+		return
+	}
+
+	if err := h.updateService.DeleteVersionFiles(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success"})
 }
 
 // Response 统一响应结构

@@ -34,7 +34,7 @@ func (Software) TableName() string {
 }
 
 // Version 软件版本
-// 支持增量更新、强制更新等策略
+// 支持增量更新、强制更新、灰度发布等策略
 type Version struct {
 	ID            uint64         `json:"id" gorm:"primaryKey"`
 	TenantID      uint64         `json:"tenant_id" gorm:"index;comment:租户ID"` // 多租户预留字段
@@ -45,10 +45,17 @@ type Version struct {
 	Screenshots   string         `json:"screenshots" gorm:"type:text;comment:版本截图URLs(JSON数组)"`
 	PackageURL    string         `json:"package_url" gorm:"size:500;comment:安装包URL"`
 	PackageSize   int64          `json:"package_size" gorm:"comment:包大小(字节)"`
-	PackageHash   string         `json:"package_hash" gorm:"size:64;comment:包SHA256哈希"`
+	PackageHash   string         `json:"package_hash" gorm:"size:128;comment:包哈希值"`
+	PackageHashAlgo string       `json:"package_hash_algo" gorm:"size:20;default:sha256;comment:哈希算法"`
 	IsForced      bool           `json:"is_forced" gorm:"default:false;comment:是否强制更新"`
 	IsIncremental bool           `json:"is_incremental" gorm:"default:false;comment:是否增量包"`
 	MinVersion    string         `json:"min_version" gorm:"size:50;comment:最低支持升级版本"`
+	
+	// 灰度发布配置
+	GrayEnabled   bool           `json:"gray_enabled" gorm:"default:false;comment:是否启用灰度发布"`
+	GrayPercent   int            `json:"gray_percent" gorm:"default:0;comment:灰度比例(0-100)"`
+	GrayStatus    int            `json:"gray_status" gorm:"default:0;comment:灰度状态 0未开始 1进行中 2已完成 3已暂停"`
+	
 	Status        int            `json:"status" gorm:"default:1;comment:状态 1发布 0草稿"`
 	PublishedAt   *time.Time     `json:"published_at" gorm:"comment:发布时间"`
 	CreatedAt     time.Time      `json:"created_at"`
@@ -62,6 +69,28 @@ type Version struct {
 // TableName 指定表名
 func (Version) TableName() string {
 	return "version"
+}
+
+// VersionFile 版本文件清单
+// 用于文件级增量更新
+type VersionFile struct {
+	ID          uint64         `json:"id" gorm:"primaryKey"`
+	VersionID   uint64         `json:"version_id" gorm:"index;not null;comment:版本ID"`
+	Path        string         `json:"path" gorm:"size:500;not null;comment:文件路径"`
+	Size        int64          `json:"size" gorm:"comment:文件大小(字节)"`
+	Hash        string         `json:"hash" gorm:"size:128;not null;comment:文件哈希(SHA256)"`
+	HashAlgo    string         `json:"hash_algo" gorm:"size:20;default:sha256;comment:哈希算法"`
+	DownloadURL string         `json:"download_url" gorm:"size:500;comment:文件下载URL"`
+	CreatedAt   time.Time      `json:"created_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+
+	// 关联
+	Version Version `json:"version,omitempty" gorm:"foreignKey:VersionID"`
+}
+
+// TableName 指定表名
+func (VersionFile) TableName() string {
+	return "version_file"
 }
 
 // Tenant 租户信息
@@ -159,6 +188,7 @@ func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&Software{},
 		&Version{},
+		&VersionFile{},
 		&Tenant{},
 		&DownloadLog{},
 		&UsageStats{},
